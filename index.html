@@ -926,9 +926,11 @@ function tabItems(q) {
 
 function tabSend(q, a) {
   const isFile = location.protocol === 'file:';
+  const selected = q.suppliers.map(getSup).filter(Boolean);
+  const selectedWithPhone = selected.filter(s => s.phone);
   return `${isFile ? `<div class="notice">${icon('info', 20)}<span>Você abriu o Cotaeasy direto do computador. Os links só funcionam para os fornecedores depois que o site for publicado (veja o README, seção GitHub Pages).</span></div>` : ''}
   <section class="card"><div class="card-head"><div><h2>Para quem enviar</h2><p class="muted">Marque os fornecedores desta cotação e envie o link pelo WhatsApp.</p></div>
-      <a class="btn soft sm" href="#/fornecedores">Gerenciar fornecedores</a></div>
+      <div class="actions">${selectedWithPhone.length ? `<button class="btn primary sm" data-action="send-all">${icon('whatsapp', 16)} Enviar para todos (${selectedWithPhone.length})</button>` : ''}<a class="btn soft sm" href="#/fornecedores">Gerenciar fornecedores</a></div></div>
     ${state.suppliers.length ? state.suppliers.map(s => {
       const on = q.suppliers.includes(s.id), b = a.bySup[s.id];
       return `<div class="send-row ${on ? 'on' : ''}">
@@ -1069,6 +1071,22 @@ async function ensureLinks(q) {
     const href = waLink(s.phone, requestMessage(q, s, link));
     $$(`[data-wa-supplier="${sid}"]`).forEach(el => { el.href = href; el.removeAttribute('aria-disabled'); });
   }
+}
+
+async function sendAllLinks(q) {
+  await ensureLinks(q);
+  const selected = q.suppliers.map(getSup).filter(Boolean);
+  const withPhone = selected.filter(s => s.phone);
+  const withoutPhone = selected.filter(s => !s.phone);
+  if (!withPhone.length) { toast('Nenhum fornecedor selecionado tem WhatsApp cadastrado.', 'err'); return; }
+  const aviso = withoutPhone.length ? ` ${withoutPhone.length} ${withoutPhone.length === 1 ? 'fornecedor selecionado não tem' : 'fornecedores selecionados não têm'} WhatsApp cadastrado — envie o link manualmente pra ${withoutPhone.length === 1 ? 'ele' : 'eles'} (botão "Copiar link").` : '';
+  const ok = await confirmBox(`Isso vai abrir ${withPhone.length} ${withPhone.length === 1 ? 'aba do WhatsApp' : 'abas do WhatsApp'}, uma pra cada fornecedor, já com a mensagem escrita. Você ainda precisa clicar em "Enviar" dentro de cada conversa.${aviso}`, 'Abrir todas');
+  if (!ok) return;
+  withPhone.forEach(s => {
+    const link = ui.links[q.id + ':' + s.id];
+    if (link) window.open(waLink(s.phone, requestMessage(q, s, link)), '_blank');
+  });
+  toast(`${withPhone.length} ${withPhone.length === 1 ? 'conversa aberta' : 'conversas abertas'} no WhatsApp.`);
 }
 
 /* ---------- Fornecedores ---------- */
@@ -1360,6 +1378,7 @@ document.addEventListener('click', async e => {
     case 'paste-items': openModal('Colar lista de itens', `<form data-form="paste-items"><label class="field"><span>Um item por linha</span><textarea name="items" required placeholder="12 un Whisky Red Label 1L&#10;6 cx Energético 250ml"></textarea><small>Também aceita colunas do Excel: nome, quantidade, unidade e observação.</small></label><div class="modal-actions"><button type="button" class="btn ghost" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Adicionar itens</button></div></form>`); break;
     case 'copy-link': { const l = q && ui.links[q.id + ':' + el.dataset.sup]; l ? copyText(requestMessage(q, getSup(el.dataset.sup), l)) : toast('Gerando o link… tente de novo em instantes.', 'err'); break; }
     case 'copy-list': if (q) copyText(listMessage(q)); break;
+    case 'send-all': if (q) await sendAllLinks(q); break;
     case 'copy-order': if (q) copyText(orderFor(q, el.dataset.sup).msg); break;
     case 'pin':
       if (q) {
